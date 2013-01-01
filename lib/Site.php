@@ -117,6 +117,18 @@ class Cst_Site {
 				$stylesheetCombined = $output;
 			}
 
+			// Compress CSS
+			if ( $filetype == 'css' ) {
+				$patterns = array(
+					'-\s{2,}-' => ' ', // strip double spaces
+					'-[\n\r\t]-' => '', // strip newlines
+					'-\s*(,|:|;|\{|\})\s*-' => '$1', //strip unnecessary spaces after ,;:{}
+					'-\s*(?!<\")\/\*[^\*]+\*\/(?!\")\s*-' => '' // strip comments
+				);
+
+				$stylesheetCombined = preg_replace( array_keys( $patterns ), array_values( $patterns ), $stylesheetCombined );
+			}
+
 			// File needs saving and syncing
 			file_put_contents($combinedFilename, $stylesheetCombined);
 			$core->createConnection();
