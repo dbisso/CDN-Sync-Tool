@@ -36,6 +36,20 @@ class Cst_Site {
 		return $buffer;
 	}
 
+	private function getFileContents($url, $filetype) {
+		$file = file_get_contents( $url );
+
+		if ( $filetype == 'css' ) {
+			// Replace relative urls with absolute urls to cdn
+			$relativeURL = dirname( parse_url( $url, PHP_URL_PATH ) );
+			$base_URL    = get_option( 'ossdlcdn' ) == 1 ? get_option('ossdl_off_cdn_url') : site_url();
+			$absoluteURL = $base_URL . $relativeURL;
+			$file        = preg_replace( '~url\([\'" ]*(?!https?|data)([^\)\'\"]+)[\'" ]*\)~', 'url("' . trailingslashit($absoluteURL) . '$1")', $file);
+		}
+
+		return $file;
+	}
+
 	public function combineFiles($buffer, $filetype) {
 		require_once CST_DIR.'lib/Cst.php';
 		$core = new Cst;
