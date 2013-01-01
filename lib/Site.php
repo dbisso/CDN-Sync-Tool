@@ -44,76 +44,40 @@ class Cst_Site {
 		$stylesheets = array();
 		$exclude = get_option('cst-'.$filetype.'-exclude');
 
-		if ($filetype == 'css') {
-			// Find all stylesheet links
-			preg_match_all('$<link.*rel=[\'"]stylesheet[\'"].*?>$', $buffer, $stylesheets);
-		} else {
-			preg_match_all('$<script.*((text/javascript|src=[\'"].*[\'"]).*){2}$', $buffer, $stylesheets);
-		}
+		libxml_use_internal_errors( true ); // Hide HTML DOM errors
+		$dom = new \DomDocument( '1.0', 'utf-8' );
 
-		foreach ($stylesheets[0] as $stylesheet) {
+		// Todo allow XML to be processed
+		$isHTML = strpos( $buffer, '<html');
+		if ( !$isHTML ) return $buffer;
 
-			// Exclude external files
-			if (!preg_match('$'.site_url().'$', $stylesheet)) {
-				if (get_option('cst-'.$filetype.'-exclude-external') == 'yes') {
-					$external = false;
+		if ( !empty( $buffer ) && $dom->loadHTML( mb_convert_encoding( (string) $buffer, 'HTML-ENTITIES', 'UTF-8' ) ) ) {
+			$tag       = $filetype == 'css' ? 'link[@rel="stylesheet"]' : 'script[@src]';
+			$attribute = $filetype == 'css' ? 'href' : 'src';
+			$xp        = new \DOMXPath( $dom );
+			$nodes     = $xp->query( '//' . $tag );
+
+			foreach ( $nodes as $key => $node ) {
+				$stylesheet = $node->attributes->getNamedItem( $attribute )->nodeValue;
+
+				if ( strpos( $exclude, str_replace( home_url() . '/', '', $stylesheet ) ) !== false ) {
+					// File is excluded so skip
 					continue;
-				} else {
-					$external = true;
 				}
-			}
 
-			// Get the filepath
-			$regex = '$';
-			if ($filetype == 'css') {
-				$regex .= 'href';
-			} else {
-				$regex .= 'src';
-			}
+				// This test is a little flakey
+				// TODO: Make this protocol agnostic
+				$is_external = strpos( $stylesheet, site_url() ) === false;
 
-			if ($external == false) {
-				$regex .= '=[\'"]'.get_bloginfo('wpurl').'(.*?)\??[\'"]$';
-				preg_match($regex, $stylesheet, $href);
-				$path = $href[1];
-				$path = preg_replace('$\.'.$filetype.'(\?.*)$', '.'.$filetype, $path);
-				$path = ltrim($path, '/');
-			} else {
-				$regex .= '=[\'"](.*)?[\'"]$';
-				preg_match($regex, $stylesheet, $href);
-				$path = $href[1];
-			}
+				if ( $is_external && get_option( "cst-$filetype-exclude-external" ) == 'yes' )
+					continue;
 
-			// Check if exclude
-			if (strpos($exclude, $path) !== false) {
-				// File is excluded so skip
-				continue;
-			}
-			
-			// Remove the link from $buffer
-			$buffer = str_replace($stylesheet, '', $buffer);
+				// Remove from the DOM
+				$parent = $node->parentNode->removeChild( $node );
 
-			if ($external == false) {
-				$file = file_get_contents(ABSPATH.$path);
-			} else {
-				$file = file_get_contents($path);
+				// Add to combined file
+				$stylesheetCombined .= PHP_EOL . self::getFileContents( $stylesheet, $filetype );
 			}
-
-			if ($filetype == 'css') {
-				// Replace relative urls with absolute urls to cdn
-				$directory = str_replace(ABSPATH, '', dirname($path));
-				$urls = array();
-				preg_match_all('$url\((.*?)\)$', $file, $urls);
-				$i = 0;
-				foreach ($urls[1] as $url) {
-					if (preg_match('$https?://|data:$', $url))
-						continue;
-					$newurl = get_option('ossdl_off_cdn_url').'/'.$directory.'/'.$url;
-					$file = str_replace($urls[0][$i], 'url('.$newurl.')', $file);
-					$i++;
-				}
-			}
-
-			$stylesheetCombined .= PHP_EOL.$file;
 		}
 
 		// Create unique filename based on the md5 of the content
@@ -124,12 +88,12 @@ class Cst_Site {
 			if ($filetype == 'js' && get_option('cst-js-minify') == 'yes') {
 				// Do minification
 				switch (get_option('cst-js-optlevel')) {
-				case 'simple':
-					$complevel = 'SIMPLE_OPTIMIZATIONS';
-				case 'advanced':
-					$complevel = 'ADVANCED_OPTIMIZATIONS';
-				default:
-					$complevel = 'WHITESPACE_ONLY';
+					case 'simple':
+						$complevel = 'SIMPLE_OPTIMIZATIONS';
+					case 'advanced':
+						$complevel = 'ADVANCED_OPTIMIZATIONS';
+					default:
+						$complevel = 'WHITESPACE_ONLY';
 				}
 				$ch = curl_init('http://closure-compiler.appspot.com/compile');
 				curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
@@ -138,30 +102,67 @@ class Cst_Site {
 				$output = curl_exec($ch);
 				$stylesheetCombined = $output;
 			}
+
+			// Compress CSS
+			if ( $filetype == 'css' ) {
+				$patterns = array(
+					'-\s{2,}-' => ' ', // strip double spaces
+					'-[\n\r\t]-' => '', // strip newlines
+					'-\s*(,|:|;|\{|\})\s*-' => '$1', //strip unnecessary spaces after ,;:{}
+					'-\s*(?!<\")\/\*[^\*]+\*\/(?!\")\s*-' => '' // strip comments
+				);
+
+				$stylesheetCombined = preg_replace( array_keys( $patterns ), array_values( $patterns ), $stylesheetCombined );
+			}
+
 			// File needs saving and syncing
 			file_put_contents($combinedFilename, $stylesheetCombined);
 			$core->createConnection();
 			$core->pushFile($combinedFilename, get_option('cst-'.$filetype.'-savepath').'/'.$hash.'.'.$filetype);
 		}
-		
+
 		// File can be loaded
-		$fileUrl = get_option('ossdl_off_cdn_url').'/'.get_option('cst-'.$filetype.'-savepath').'/'.$hash.'.'.$filetype;
-		if ($filetype == 'css') {
-			$linkTag = '<link rel="stylesheet" type="text/css" href="'.$fileUrl.'" />';
-			$buffer = preg_replace('$<head[^er]*>$', '<head>'.$linkTag, $buffer);
+		$base_URL = get_option( 'ossdlcdn' ) == 1 ? get_option('ossdl_off_cdn_url') : site_url();
+		$fileUrl  = sprintf( '%s/%s/%s.%s', $base_URL, get_option( "cst-$filetype-savepath" ), $hash, $filetype );
+
+		// Build the new element for the combined file
+		if ( $filetype == 'css' ) {
+			$newNode         = $dom->createElement( 'link' );
+			$linkRel         = $dom->createAttribute( 'rel' );
+			$linkType        = $dom->createAttribute( 'type' );
+			$linkHref        = $dom->createAttribute( 'href' );
+			$linkRel->value  = 'stylesheet';
+			$linkType->value = 'text/css';
+			$linkHref->value = $fileUrl;
+			$newNode->appendChild( $linkRel );
+			$newNode->appendChild( $linkType );
+			$newNode->appendChild( $linkHref );
 		} else {
-			$linkTag = '<script type="text/javascript" src="'.$fileUrl.'"></script>';
-			if (get_option('cst-js-placement') == 'body') {
-				if (preg_match('$</body*>$', $buffer)) {
-					$buffer = preg_replace('$</body*>$', $linkTag.'</body>', $buffer);
-				} else {
-					$buffer .= $linkTag;
-				}
-			} else {
-				$buffer = preg_replace('$<head[^er]*>$', '<head>'.$linkTag, $buffer);
-			}
+			$newNode           = $dom->createElement( 'script' );
+			$scriptType        = $dom->createAttribute( 'type' );
+			$scriptSrc         = $dom->createAttribute( 'src' );
+
+			$scriptType->value = 'text/javascript';
+			$scriptSrc->value  = $fileUrl;
+			$newNode->appendChild( $scriptType );
+			$newNode->appendChild( $scriptSrc );
 		}
 
-		return $buffer;
+		if ( $filetype == 'css' ) {
+			// Stylesheets are always appended at the end of the <head>
+			$target = $dom->getElementsByTagName( 'head' )->item(0);
+			$target->insertBefore( $newNode, $target->firstChild );
+		} else {
+			if ( get_option( 'cst-js-placement' ) == 'body' ) {
+				$target = $dom->getElementsByTagName( 'body' )->item(0);
+			} else {
+				$target = $dom->getElementsByTagName( 'head' )->item(0);
+			}
+
+			$target->appendChild( $newNode );
+		}
+
+		// Return the modified DOM
+		return $dom->saveHTML();
 	}
 }
