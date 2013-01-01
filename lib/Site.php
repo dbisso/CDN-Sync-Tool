@@ -59,7 +59,7 @@ class Cst_Site {
 		$exclude = get_option('cst-'.$filetype.'-exclude');
 
 		libxml_use_internal_errors( true ); // Hide HTML DOM errors
-		$dom = new \DomDocument( '1.0', 'utf-8' );
+		$dom = new DomDocument( '1.0', 'utf-8' );
 
 		// Todo allow XML to be processed
 		$isHTML = strpos( $buffer, '<html');
@@ -68,7 +68,7 @@ class Cst_Site {
 		if ( !empty( $buffer ) && $dom->loadHTML( mb_convert_encoding( (string) $buffer, 'HTML-ENTITIES', 'UTF-8' ) ) ) {
 			$tag       = $filetype == 'css' ? 'link[@rel="stylesheet"]' : 'script[@src]';
 			$attribute = $filetype == 'css' ? 'href' : 'src';
-			$xp        = new \DOMXPath( $dom );
+			$xp        = new DOMXPath( $dom );
 			$nodes     = $xp->query( '//' . $tag );
 
 			foreach ( $nodes as $key => $node ) {
