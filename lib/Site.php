@@ -37,6 +37,8 @@ class Cst_Site {
 	}
 
 	private function getFileContents($url, $filetype) {
+		// Default to http for protocol relative URLs
+		$url  = preg_replace( '~^//~', 'http://', $url );
 		$file = file_get_contents( $url );
 
 		if ( $filetype == 'css' ) {
