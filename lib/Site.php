@@ -120,7 +120,7 @@ class Cst_Site {
 			}
 
 			// Compress CSS
-			if ( $filetype == 'css' ) {
+			if ( $filetype == 'css' && 'yes' == get_option( 'cst-css-minify' ) ) {
 				$patterns = array(
 					'-\s{2,}-' => ' ', // strip double spaces
 					'-[\n\r\t]-' => '', // strip newlines

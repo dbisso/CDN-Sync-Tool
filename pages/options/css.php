@@ -30,6 +30,14 @@
 					</td>
 					<td><strong>Each file on new line. Exact path relative to site root <em>(e.g. wp-content/css/style.css)</em></strong></td>
 				</tr>
+				<tr valign="top">
+					<th scope="row"><label>Minify CSS files</label></th>
+					<td>
+						<input type="radio" value="yes" id="cst-css-minify-yes" name="options[cst-css-minify]" <?php if (get_option('cst-css-minify') == 'yes') { echo 'checked="checked"'; }?> /><label for="cst-css-minify-yes" class="cst-inline-label">Yes</label>
+						<input type="radio" value="no" id="cst-css-minify-no" name="options[cst-css-minify]" <?php if (get_option('cst-css-minify') == 'no') { echo 'checked="checked"'; }?> /><label for="cst-css-minify-no" class="cst-inline-label">No</label>
+						</td>
+					<td><strong>Unneccesary charachters will be stripped from the combined CSS files</em></strong></td>
+				</tr>
 			</tbody>
 		</table>
 		<input type="hidden" name="form" value="cst-css" />
