@@ -122,10 +122,11 @@ class Cst_Site {
 			// Compress CSS
 			if ( $filetype == 'css' && 'yes' == get_option( 'cst-css-minify' ) ) {
 				$patterns = array(
-					'-\s{2,}-' => ' ', // strip double spaces
-					'-[\n\r\t]-' => '', // strip newlines
-					'-\s*(,|:|;|\{|\})\s*-' => '$1', //strip unnecessary spaces after ,;:{}
-					'-\s*(?!<\")\/\*[^\*]+\*\/(?!\")\s*-' => '' // strip comments
+					'-\s{2,}-'                            => ' ',  // strip double spaces
+					'-\s*(?!<\")\/\*[^\*]+\*\/(?!\")\s*-' => '',    // strip comments
+					'-[\n\r\t]-'                          => '',   // strip newlines
+					'-\s*(,|:|;|\{|\})\s*-'               => '$1', // strip unnecessary spaces after ,;:{}
+					'-;}-'                                => '}',  // strip last ; in declaration
 				);
 
 				$stylesheetCombined = preg_replace( array_keys( $patterns ), array_values( $patterns ), $stylesheetCombined );
